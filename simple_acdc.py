@@ -1,10 +1,10 @@
 """
 Simple ACDC (Automatic Circuit Discovery) Implementation
 
-This module implements a simplified version of Automatic Circuit Discovery (ACDC), a method for 
+This module implements a comprehensive version of Automatic Circuit Discovery (ACDC), a method for 
 identifying the minimal computational circuit within a transformer language model that is responsible 
 for a specific behavior or task. Unlike the original ACDC which prunes from a full computational graph, 
-this implementation uses an incremental building approach.
+this implementation uses an incremental building approach with advanced circuit analysis capabilities.
 
 ALGORITHM OVERVIEW:
 ==================
@@ -17,6 +17,8 @@ Key Components:
 - Nodes: Represent either residual stream states or attention head outputs at specific token positions
 - Edges: Represent information flow between components (residual connections, attention outputs, Q/K/V connections)
 - Circuit Discovery: Breadth-first traversal through the computational graph, testing component importance
+- Circuit Merging: Ability to combine multiple circuits and filter nodes for comparative analysis
+- Enhanced Visualization: Dynamic head positioning, color-coded edges, and individual circuit display options
 
 METHODOLOGY:
 ============
@@ -32,6 +34,12 @@ METHODOLOGY:
 
 4. **Incremental Building**: Processes nodes in reverse order (final layer → first layer) to build 
    minimal circuit without unnecessary components
+
+5. **Circuit Merging**: Ability to combine multiple discovered circuits using union operations
+   with optional node filtering based on labels or circuit membership
+
+6. **Advanced Analysis**: Q-K dot product computation for understanding attention mechanisms
+   using rotated embeddings and proper GQA head mapping
 
 CIRCUIT COMPONENTS:
 ==================
@@ -92,11 +100,22 @@ FEATURES:
    - Color-coded edge types (red/blue for positive/negative effects)
    - Thickness proportional to effect magnitude
    - Simplified head labels (H0, H1, etc.)
+   - Dynamic head positioning with even distribution based on circuit composition
    - Conditional query edge coloring based on corrupt_q setting
-7. **Flexible Metrics**: Currently uses cosine similarity but extensible to other metrics
-8. **Caching**: Corrupted activations are cached for efficient repeated patching
-9. **Consistency Checking**: Prevents conflicting patch operations on same components
-10. **Class Properties**: `include_current_token` as class property eliminates parameter passing complexity
+7. **Circuit Merging & Filtering**: Tools for combining and filtering circuits:
+   - Union-based circuit merging with optional node filtering
+   - Label-based filtering for selective node inclusion/exclusion
+   - Individual circuit visualization before merging for workflow transparency
+8. **Advanced Analysis Tools**:
+   - Q-K dot product computation using rotated embeddings for attention analysis
+   - Token identification and detokenization for result interpretation
+   - Proper GQA head mapping for accurate multi-head attention analysis
+9. **Flexible Metrics**: Currently uses cosine similarity but extensible to other metrics
+10. **Caching**: Corrupted activations are cached for efficient repeated patching
+11. **Consistency Checking**: Prevents conflicting patch operations on same components
+12. **Class Properties**: `include_current_token` as class property eliminates parameter passing complexity
+13. **Threshold Analysis**: Enhanced threshold sweep with weighted edge counting for accurate metrics
+14. **Batch Processing**: Support for building and merging multiple circuits in single workflow
 
 LIMITATIONS:
 ============
@@ -124,13 +143,30 @@ circuit = acdc.discover_circuit(
 # Visualize discovered circuit with enhanced display
 acdc.visualize_circuit(circuit, save_path="idiom_circuit.png")
 
-# Run threshold sweep for parameter tuning
+# Build and merge multiple circuits with workflow visualization
+circuits_info = [
+    {"label": "bucket", "original": "He kicked the bucket", "corrupted": "He kicked the pail", "target": "He died"},
+    {"label": "music", "original": "face the music", "corrupted": "face the band", "target": "accept consequences"}
+]
+merged_circuit = build_and_merge_circuits(
+    acdc, circuits_info, min_token_pos=2, 
+    visualize_individual=True,  # Show individual circuits before merging
+    save_individual=True
+)
+
+# Filter merged circuit to specific components
+filtered_circuit = filter_circuit_nodes(merged_circuit, 
+                                       include_labels=["bucket", "music"])
+
+# Analyze attention mechanisms with Q-K dot products
+texts = ["He kicked the bucket", "face the music"]
+compute_qk_dot_products(model, texts, layer=2, head=3, q_index=2, k_index=1)
+
+# Run threshold sweep for parameter tuning with accurate edge counting
 thresholds, metrics = threshold_sweep(model, max_layer=4, 
                                      original_text="He kicked the bucket",
                                      corrupted_text="He kicked the pail", 
                                      target_text="He died")
-```
-acdc.visualize_circuit(circuit, save_path="idiom_circuit.png")
 ```
 
 IMPLEMENTATION NOTES:
@@ -1003,6 +1039,32 @@ class SimpleACDC:
         effective_min_token = min(min_token_pos, actual_min_token_pos) if actual_min_token_pos != float('inf') else min_token_pos
         token_range = max_token_pos - effective_min_token
         
+        # First pass: count attention heads at each (layer, token) position
+        head_counts = {}  # (layer, token) -> count
+        head_positions = {}  # (layer, token) -> list of head_nums
+        
+        for node in G.nodes():
+            if 'L' in node and 'H' in node and '_T' in node:
+                # Parse attention head node: L{layer}H{head}_T{token}
+                parts = node.split('_T')
+                layer_head = parts[0].split('L')[1]  # "4H5" for example
+                token_pos = int(parts[1])
+                
+                if 'H' in layer_head:
+                    layer_num = int(layer_head.split('H')[0])
+                    head_num = int(layer_head.split('H')[1])
+                    
+                    key = (layer_num, token_pos)
+                    if key not in head_counts:
+                        head_counts[key] = 0
+                        head_positions[key] = []
+                    head_counts[key] += 1
+                    head_positions[key].append(head_num)
+        
+        # Sort head numbers at each position for consistent ordering
+        for key in head_positions:
+            head_positions[key].sort()
+        
         # Position nodes: horizontal=layer, vertical=token position
         for node in G.nodes():
             if 'Embed_T' in node:
@@ -1023,9 +1085,16 @@ class SimpleACDC:
                     if 'H' in layer_head:
                         layer_num = int(layer_head.split('H')[0])
                         head_num = int(layer_head.split('H')[1])
-                        # Place attention heads up and to the left of residual nodes
-                        x = layer_num - 0.85 + (head_num * 0.1)  # Slightly left, stagger heads
-                        y = (token_range - (token_pos - effective_min_token)) + 0.3   # Adjusted for token range
+                        
+                        # Calculate position based on even distribution
+                        key = (layer_num, token_pos)
+                        num_heads = head_counts[key]
+                        head_index = head_positions[key].index(head_num)
+                        
+                        # Multiple heads: spread evenly
+                        spacing = 1.0 / (num_heads + 1)
+                        x = layer_num - 1.0 + (head_index + 1) * spacing
+                        y = (token_range - (token_pos - effective_min_token)) + 0.5   # Adjusted for token range
                     else:
                         layer_num = int(layer_head)
                         x = layer_num
@@ -1076,7 +1145,7 @@ class SimpleACDC:
             attention_pos = {n: pos[n] for n in attention_nodes}
             nx.draw_networkx_nodes(G.subgraph(attention_nodes), attention_pos,
                                   node_color=attention_colors, node_shape='s',
-                                  node_size=500, alpha=0.9)
+                                  node_size=700, alpha=0.9)
         
         # Draw edges with stronger colors and better visibility
         edge_colors = []
@@ -1101,7 +1170,7 @@ class SimpleACDC:
             effect = G[u][v]['effect']
             if effect is not None:
                 # Scale thickness with effect magnitude relative to threshold
-                thickness = max(1.0, (abs(effect) / self.threshold) ** 0.8)  # Non-linear scaling for visibility
+                thickness = max(1.0, (abs(effect) / self.threshold) ** 0.7)  # Non-linear scaling for visibility
                 weights.append(thickness)
             else:
                 weights.append(3.0)  # Default thickness for non-measured edges
@@ -1239,10 +1308,11 @@ def threshold_sweep(model: HookedTransformer, max_layer: int,
         ts = [round(x, 4) for x in np.arange(thresholds[0], thresholds[1]+thresholds[2], thresholds[2])]
     
     metrics = []
+    edge_counts = []
     # tqdm progress bar
     for i, t in enumerate(tqdm(ts, desc="Threshold Sweep")):
         acdc = SimpleACDC(model, max_layer=max_layer, threshold=t, corrupt_q=corrupt_q, include_current_token=include_current_token, separate_kv=separate_kv)
-        _, current_metric = acdc.discover_circuit(
+        circuit, current_metric = acdc.discover_circuit(
             original_text=original_text,
             corrupted_text=corrupted_text,
             target_text=target_text,
@@ -1250,15 +1320,55 @@ def threshold_sweep(model: HookedTransformer, max_layer: int,
             quiet=quiet
         )
         metrics.append(current_metric)
+        # Count only edges with weights (attention-related: attn_out, query, key, value, key_value)
+        # Exclude residual and embed edges which don't have measured effect sizes
+        weighted_edges = [edge for edge in circuit.edges if edge.effect_size is not None]
+        num_weighted_edges = len(weighted_edges)
+        edge_counts.append(max(1, num_weighted_edges))  # Avoid log(0) by using minimum of 1
+        
     if plot:
-        plt.figure(figsize=(8,5))
-        plt.plot(ts, metrics, marker='o')
-        plt.xlabel('Threshold')
-        plt.ylabel('Metric (Cosine Similarity)')
-        plt.title(corrupted_text)
-        plt.grid(True)
+        fig, ax1 = plt.subplots(figsize=(10, 6))
+        
+        # Plot metrics on left y-axis
+        color1 = 'tab:blue'
+        ax1.set_xlabel('Threshold')
+        ax1.set_ylabel('Metric (Cosine Similarity)', color=color1)
+        line1 = ax1.plot(ts, metrics, marker='o', color=color1, label='Cosine Similarity')
+        ax1.tick_params(axis='y', labelcolor=color1)
+        ax1.grid(True, alpha=0.3)
+        
+        # Create second y-axis for edge count (log scale)
+        ax2 = ax1.twinx()
+        color2 = 'tab:red'
+        ax2.set_ylabel('Number of Edges (log scale)', color=color2)
+        ax2.set_yscale('log')
+        line2 = ax2.plot(ts, edge_counts, marker='s', color=color2, label='Edge Count')
+        ax2.tick_params(axis='y', labelcolor=color2)
+        
+        # Rescale axes to use full plot area
+        # Left axis (metrics)
+        metric_min, metric_max = min(metrics), max(metrics)
+        metric_range = metric_max - metric_min
+        if metric_range > 0:
+            ax1.set_ylim(metric_min - 0.05 * metric_range, metric_max + 0.05 * metric_range)
+        
+        # Right axis (edge counts) - already log scale, just set reasonable bounds
+        edge_min, edge_max = min(edge_counts), max(edge_counts)
+        if edge_min == edge_max:
+            ax2.set_ylim(0.5, edge_max * 2)
+        else:
+            ax2.set_ylim(edge_min * 0.5, edge_max * 2)
+        
+        plt.title(f'{corrupted_text} - Threshold Sweep')
+        
+        # Add legend
+        lines1, labels1 = ax1.get_legend_handles_labels()
+        lines2, labels2 = ax2.get_legend_handles_labels()
+        ax1.legend(lines1 + lines2, labels1 + labels2, loc='upper right')
+        
+        plt.tight_layout()
         plt.show()
-    return ts, metrics
+    return ts, metrics, edge_counts
 
 
 def multi_corrupted_threshold_sweep(model: HookedTransformer, max_layer: int,
@@ -1290,7 +1400,7 @@ def multi_corrupted_threshold_sweep(model: HookedTransformer, max_layer: int,
     for i, corrupted_text in enumerate(corrupted_texts):
         
         # Use the existing threshold_sweep function
-        ts, metrics = threshold_sweep(
+        ts, metrics, edge_counts = threshold_sweep(
             model=model,
             max_layer=max_layer,
             original_text=original_text,
@@ -1301,7 +1411,7 @@ def multi_corrupted_threshold_sweep(model: HookedTransformer, max_layer: int,
             min_token_pos=min_token_pos,
             include_current_token=include_current_token,
             separate_kv=separate_kv,  # Now passing separate_kv parameter
-            plot=plot,  # Don't plot individual sweeps
+            plot=plot,  # Plot individual sweeps with dual y-axis
             quiet=True   # Always quiet for individual runs
         )
     
@@ -1309,28 +1419,360 @@ def multi_corrupted_threshold_sweep(model: HookedTransformer, max_layer: int,
 
 
 # Example usage
-def example_usage():
-    """Example of how to use SimpleACDC"""
-    # Load your Gemma model (replace with your actual model loading)
-    # from gemma_utils import create_gemma_experiment
-    # experiment = create_gemma_experiment()
-    # model = experiment.model
+def filter_circuit_nodes(circuit: IncrementalCircuitGraph) -> IncrementalCircuitGraph:
+    """
+    Filter out attention nodes that have no input connections and their outgoing connections.
     
-    # Initialize ACDC
-    # acdc = SimpleACDC(model, max_layer=4, threshold=0.01)
+    Args:
+        circuit: Original circuit graph
+        
+    Returns:
+        Filtered circuit with attention nodes with no inputs removed
+    """
+    filtered_circuit = IncrementalCircuitGraph()
     
-    # Discover circuit (skip first 2 tokens: BOS and "He")
-    # circuit = acdc.discover_circuit(
-    #     original_text="He kicked the bucket",
-    #     corrupted_text="He kicked the pail", 
-    #     target_text="He died",
-    #     min_token_pos=2  # Skip BOS and "He" - start from "kicked"
-    # )
+    # Copy basic circuit properties
+    filtered_circuit.hooks_to_patch = circuit.hooks_to_patch.copy()
+    filtered_circuit.clean_activations = circuit.clean_activations.copy()
+    filtered_circuit.excluded_attention_heads = circuit.excluded_attention_heads.copy()
+    filtered_circuit.excluded_k_connections = circuit.excluded_k_connections.copy()
+    filtered_circuit.excluded_v_connections = circuit.excluded_v_connections.copy()
+    filtered_circuit.excluded_q_connections = circuit.excluded_q_connections.copy()
+    filtered_circuit.earliest_patched_layer = circuit.earliest_patched_layer
     
-    # Visualize results
-    # acdc.visualize_circuit(circuit, save_path="bucket_circuit.png")
+    # Build a mapping of which nodes have incoming edges
+    nodes_with_inputs = set()
+    for edge in circuit.edges:
+        nodes_with_inputs.add(edge.child)
     
-    print("Example usage code ready - uncomment and provide your model!")
+    # Add nodes that have inputs or are not attention nodes
+    for node in circuit.nodes:
+        if node.node_type != "attn" or node in nodes_with_inputs:
+            filtered_circuit.add_node(node)
+    
+    # Add edges only if both parent and child nodes are kept
+    for edge in circuit.edges:
+        if edge.parent in filtered_circuit.nodes and edge.child in filtered_circuit.nodes:
+            filtered_circuit.add_edge(edge)
+    
+    return filtered_circuit
 
-if __name__ == "__main__":
-    example_usage()
+def merge_circuits(circuits: List[IncrementalCircuitGraph]) -> IncrementalCircuitGraph:
+    """
+    Merge multiple circuits by taking union of nodes/edges and intersection of exclusions.
+    For edges with weights, take the maximum weight.
+    
+    Args:
+        circuits: List of circuits to merge
+        
+    Returns:
+        Merged circuit
+    """
+    if not circuits:
+        return IncrementalCircuitGraph()
+    
+    merged_circuit = IncrementalCircuitGraph()
+    
+    # Initialize with first circuit's properties
+    first_circuit = circuits[0]
+    merged_circuit.hooks_to_patch = first_circuit.hooks_to_patch.copy()
+    merged_circuit.clean_activations = first_circuit.clean_activations.copy()
+    merged_circuit.earliest_patched_layer = first_circuit.earliest_patched_layer
+    
+    # Start with first circuit's exclusions, then intersect with others
+    merged_circuit.excluded_attention_heads = first_circuit.excluded_attention_heads.copy()
+    merged_circuit.excluded_k_connections = first_circuit.excluded_k_connections.copy()
+    merged_circuit.excluded_v_connections = first_circuit.excluded_v_connections.copy()
+    merged_circuit.excluded_q_connections = first_circuit.excluded_q_connections.copy()
+    
+    # Intersect exclusions across all circuits
+    for circuit in circuits[1:]:
+        merged_circuit.excluded_attention_heads &= circuit.excluded_attention_heads
+        merged_circuit.excluded_k_connections &= circuit.excluded_k_connections
+        merged_circuit.excluded_v_connections &= circuit.excluded_v_connections
+        merged_circuit.excluded_q_connections &= circuit.excluded_q_connections
+        
+        # Update earliest patched layer
+        merged_circuit.earliest_patched_layer = min(merged_circuit.earliest_patched_layer, 
+                                                   circuit.earliest_patched_layer)
+    
+    # Union of all nodes
+    all_nodes = set()
+    for circuit in circuits:
+        all_nodes.update(circuit.nodes)
+    
+    for node in all_nodes:
+        merged_circuit.add_node(node)
+    
+    # Union of edges with maximum effect size for duplicates
+    edge_map = {}  # (parent, child, edge_type) -> Edge with max effect
+    
+    for circuit in circuits:
+        for edge in circuit.edges:
+            key = (edge.parent, edge.child, edge.edge_type)
+            
+            if key not in edge_map:
+                edge_map[key] = edge
+            else:
+                # Take edge with maximum absolute effect size
+                existing_edge = edge_map[key]
+                if (edge.effect_size is not None and 
+                    (existing_edge.effect_size is None or 
+                     abs(edge.effect_size) > abs(existing_edge.effect_size))):
+                    edge_map[key] = edge
+    
+    # Add all unique edges to merged circuit
+    for edge in edge_map.values():
+        merged_circuit.add_edge(edge)
+    
+    return merged_circuit
+
+def build_and_merge_circuits(model: HookedTransformer,
+                           max_layer: int,
+                           original_text: str,
+                           corrupted_texts: List[str],
+                           target_text: str,
+                           thresholds: List[float],
+                           min_token_pos: int = 2,
+                           corrupt_q: bool = True,
+                           separate_kv: bool = True,
+                           include_current_token: bool = False,
+                           quiet: bool = False,
+                           visualize_individual: bool = False,
+                           save_individual_paths: Optional[List[str]] = None) -> Tuple[IncrementalCircuitGraph, List[IncrementalCircuitGraph], List[float]]:
+    """
+    Build circuits for each corrupted text with specified thresholds, filter attention nodes
+    with no inputs, and merge all circuits.
+    
+    Args:
+        model: HookedTransformer model
+        max_layer: Maximum layer to consider in circuits
+        original_text: The text exhibiting the behavior of interest
+        corrupted_texts: List of control texts (baseline/corrupted versions)
+        target_text: The target behavior text for measuring effects
+        thresholds: List of threshold values for each corrupted text (must match length)
+        min_token_pos: Minimum token position to consider for modifications
+        corrupt_q: Whether to corrupt query connections when testing
+        separate_kv: Whether to test key and value connections separately
+        include_current_token: Whether to test key/value connections from current token
+        quiet: Whether to suppress detailed output
+        visualize_individual: Whether to visualize each individual circuit before merging
+        save_individual_paths: Optional list of save paths for individual circuit visualizations
+        
+    Returns:
+        Tuple of (merged_circuit, individual_circuits, final_metrics)
+    """
+    if len(corrupted_texts) != len(thresholds):
+        raise ValueError(f"Number of corrupted texts ({len(corrupted_texts)}) must match number of thresholds ({len(thresholds)})")
+    
+    if save_individual_paths is not None and len(save_individual_paths) != len(corrupted_texts):
+        raise ValueError(f"Number of save paths ({len(save_individual_paths)}) must match number of corrupted texts ({len(corrupted_texts)})")
+    
+    if not quiet:
+        print(f"Building and merging circuits for {len(corrupted_texts)} corrupted texts")
+        print(f"Original: '{original_text}'")
+        print(f"Target: '{target_text}'")
+        print(f"Corrupted texts and thresholds:")
+        for i, (corrupted_text, threshold) in enumerate(zip(corrupted_texts, thresholds)):
+            print(f"  {i+1}. '{corrupted_text}' (threshold: {threshold})")
+    
+    # Build individual circuits
+    individual_circuits = []
+    final_metrics = []
+    
+    for i, (corrupted_text, threshold) in enumerate(zip(corrupted_texts, thresholds)):
+        if not quiet:
+            print(f"\n{'='*60}")
+            print(f"Building circuit {i+1}/{len(corrupted_texts)}: {corrupted_text}")
+            print(f"Threshold: {threshold}")
+            print(f"{'='*60}")
+        
+        # Initialize ACDC with specific threshold
+        acdc = SimpleACDC(
+            model=model,
+            max_layer=max_layer,
+            threshold=threshold,
+            corrupt_q=corrupt_q,
+            include_current_token=include_current_token,
+            separate_kv=separate_kv
+        )
+        
+        # Discover circuit
+        circuit, final_metric = acdc.discover_circuit(
+            original_text=original_text,
+            corrupted_text=corrupted_text,
+            target_text=target_text,
+            min_token_pos=min_token_pos,
+            quiet=quiet
+        )
+        
+        if not quiet:
+            print(f"Circuit {i+1} discovered: {len(circuit.nodes)} nodes, {len(circuit.edges)} edges")
+            print(f"Final metric: {final_metric:.4f}")
+        
+        individual_circuits.append(circuit)
+        final_metrics.append(final_metric)
+        
+        # Visualize individual circuit if requested
+        if visualize_individual:
+            if not quiet:
+                print(f"\nVisualizing individual circuit {i+1}: {corrupted_text}")
+            
+            save_path = None
+            if save_individual_paths is not None:
+                save_path = save_individual_paths[i]
+            
+            acdc.visualize_circuit(
+                circuit, 
+                save_path=save_path,
+                min_token_pos=min_token_pos,
+                quiet=quiet
+            )
+    
+    if not quiet:
+        print(f"\n{'='*60}")
+        print("FILTERING ATTENTION NODES WITH NO INPUTS")
+        print(f"{'='*60}")
+    
+    # Filter each circuit to remove attention nodes with no input connections
+    filtered_circuits = []
+    for i, circuit in enumerate(individual_circuits):
+        filtered_circuit = filter_circuit_nodes(circuit)
+        
+        original_attn_nodes = len([n for n in circuit.nodes if n.node_type == "attn"])
+        filtered_attn_nodes = len([n for n in filtered_circuit.nodes if n.node_type == "attn"])
+        removed_attn_nodes = original_attn_nodes - filtered_attn_nodes
+        
+        if not quiet:
+            print(f"Circuit {i+1}: Removed {removed_attn_nodes} attention nodes with no inputs")
+            print(f"  Before: {len(circuit.nodes)} nodes, {len(circuit.edges)} edges")
+            print(f"  After:  {len(filtered_circuit.nodes)} nodes, {len(filtered_circuit.edges)} edges")
+        
+        filtered_circuits.append(filtered_circuit)
+    
+    if not quiet:
+        print(f"\n{'='*60}")
+        print("MERGING CIRCUITS")
+        print(f"{'='*60}")
+    
+    # Merge all filtered circuits
+    merged_circuit = merge_circuits(filtered_circuits)
+    
+    if not quiet:
+        # Calculate total nodes/edges before merging
+        total_nodes_before = sum(len(circuit.nodes) for circuit in filtered_circuits)
+        total_edges_before = sum(len(circuit.edges) for circuit in filtered_circuits)
+        
+        print(f"Merged circuit statistics:")
+        print(f"  Individual circuits total: {total_nodes_before} nodes, {total_edges_before} edges")
+        print(f"  Merged circuit: {len(merged_circuit.nodes)} nodes, {len(merged_circuit.edges)} edges")
+        
+        # Show exclusion intersections
+        print(f"\nExclusion intersections:")
+        print(f"  Attention heads: {len(merged_circuit.excluded_attention_heads)}")
+        print(f"  K connections: {len(merged_circuit.excluded_k_connections)}")
+        print(f"  V connections: {len(merged_circuit.excluded_v_connections)}")
+        print(f"  Q connections: {len(merged_circuit.excluded_q_connections)}")
+        
+        # Show node type breakdown
+        attn_nodes = [n for n in merged_circuit.nodes if n.node_type == "attn"]
+        resid_nodes = [n for n in merged_circuit.nodes if n.node_type == "resid"]
+        embed_nodes = [n for n in merged_circuit.nodes if n.node_type == "embed"]
+        
+        print(f"\nMerged circuit node breakdown:")
+        print(f"  Attention nodes: {len(attn_nodes)}")
+        print(f"  Residual nodes: {len(resid_nodes)}")
+        print(f"  Embedding nodes: {len(embed_nodes)}")
+        
+        # Show edge type breakdown
+        edge_types = {}
+        for edge in merged_circuit.edges:
+            edge_types[edge.edge_type] = edge_types.get(edge.edge_type, 0) + 1
+        
+        print(f"\nMerged circuit edge breakdown:")
+        for edge_type, count in sorted(edge_types.items()):
+            print(f"  {edge_type}: {count}")
+    
+    return merged_circuit, individual_circuits, final_metrics
+
+def compute_qk_dot_products(model: HookedTransformer,
+                           texts: List[str],
+                           layer: int,
+                           head_idx: int,
+                           q_index: int,
+                           k_index: int) -> List[float]:
+    """
+    Compute the rotated Q-K dot product between two token positions for a specific attention head
+    across multiple texts.
+    
+    Args:
+        model: HookedTransformer model
+        texts: List of texts to analyze
+        layer: Layer number of the attention head
+        head_idx: Head index within the layer
+        token_idx1: Token position for Q (query)
+        token_idx2: Token position for K (key)
+        
+    Returns:
+        List of Q-K dot products, one for each text
+    """
+    dot_products = []
+    
+    print(f"Computing Q-K dot products for Layer {layer}, Head {head_idx} (Q@{q_index}, K@{k_index}):")
+    
+    # Get token information from first text for reference
+    if texts:
+        first_tokens = model.to_tokens(texts[0], prepend_bos=True)
+        first_seq_len = first_tokens.shape[1]
+        
+        # Detokenize to show actual tokens
+        q_token = "N/A"
+        k_token = "N/A"
+        if q_index < first_seq_len:
+            q_token = model.tokenizer.decode([first_tokens[0, q_index].item()])
+        if k_index < first_seq_len:
+            k_token = model.tokenizer.decode([first_tokens[0, k_index].item()])
+        
+        print(f"Q token at position {q_index}: '{q_token}'")
+        print(f"K token at position {k_index}: '{k_token}'")
+    
+    print("-" * 80)
+    
+    for text in texts:
+        # Tokenize text
+        tokens = model.to_tokens(text, prepend_bos=True)
+        
+        # Check if token indices are valid for this text
+        seq_len = tokens.shape[1]
+        if q_index >= seq_len or k_index >= seq_len:
+            print(f"'{text}' -> WARNING: Token indices ({q_index}, {k_index}) exceed sequence length {seq_len}")
+            dot_products.append(float('nan'))
+            continue
+        
+        # Get rotated Q and K activations using existing caching approach
+        with torch.no_grad():
+            _, cache = model.run_with_cache(tokens, stop_at_layer=layer + 1)
+            
+            # Extract rotated Q and K for this layer
+            q_rot = cache[f"blocks.{layer}.attn.hook_rot_q"]  # [batch, seq, n_heads, d_head]
+            k_rot = cache[f"blocks.{layer}.attn.hook_rot_k"]  # [batch, seq, n_kv_heads, d_head]
+            
+            # Handle Grouped Query Attention (GQA) mapping
+            n_q_heads = q_rot.shape[2]
+            n_kv_heads = k_rot.shape[2]
+            heads_per_group = n_q_heads // n_kv_heads
+            kv_head_idx = head_idx // heads_per_group  # Correct GQA mapping
+            
+            # Extract Q and K vectors for the specified tokens and head
+            q_vector = q_rot[0, q_index, head_idx, :]  # [d_head]
+            k_vector = k_rot[0, k_index, kv_head_idx, :]  # [d_head]
+            
+            # Compute dot product
+            dot_product = torch.dot(q_vector, k_vector).item()
+            dot_products.append(dot_product)
+            
+            # Print text with dot product
+            print(f"'{text}' -> {dot_product:.6f}")
+    
+    print("-" * 80)
+    return dot_products

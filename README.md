@@ -8,12 +8,43 @@ This project implements a streamlined version of ACDC that discovers computation
 
 ## ✨ Key Features
 
-- **Simple ACDC Implementation**: Clean, efficient circuit discovery using activation patching
+- **Enhanced ACDC Implementation**: Circuit discovery with merging and filtering capabilities
 - **Performance Optimized**: Smart caching system for faster circuit discovery
+- **Circuit Merging**: Combine and filter multiple circuits for comparative analysis
+- **Advanced Visualization**: Dynamic head positioning and color-coded edge weights
+- **Q-K Analysis Tools**: Analyze attention mechanisms with dot product computation
 - **Multi-Text Comparison**: Compare circuits across multiple corrupted texts
 - **Interactive Visualization**: NetworkX-based circuit graphs with merged edge display
-- **Threshold Sweeping**: Automated parameter exploration across thresholds
+- **Threshold Sweeping**: Automated parameter exploration with enhanced metrics
 - **Attention Granularity**: Separate key/value analysis for fine-grained attention circuits
+
+## 🎨 Example Circuit Visualization
+
+Here's an example circuit discovered for the idiom "kicked the bucket" → "died":
+
+![Circuit Discovery Example](example_booted_bucket.png)
+
+This visualization shows the discovered computational circuit for understanding how the model processes the idiom "He kicked the bucket" and relates it to the meaning "He died". The circuit was discovered using:
+
+- **Original text**: "He kicked the bucket" 
+- **Corrupted text**: "He booted the bucket" (minimal word change)
+- **Target**: "He died" (semantic meaning)
+- **Threshold**: 0.017
+
+### Circuit Interpretation
+
+The graph shows:
+
+- **Nodes**: Represent components in the transformer (residual streams, attention heads)
+- **Edges**: Show information flow with effect sizes as edge weights
+- **Colors**: Different node types (residual vs attention components)
+- **Edge Types**: 
+  - `resid`: Residual stream connections between layers
+  - `attn_out`: Attention head outputs to residual stream  
+  - `query`: Query connections from residual to attention heads
+  - `key`/`value`: Key/Value connections from previous tokens (when `separate_kv=True`)
+
+This particular circuit reveals how the model identifies and processes the idiomatic meaning of "kicked the bucket" by tracking the key components involved in semantic transformation from literal action to metaphorical meaning.
 
 ## 🚀 Quick Start
 
@@ -21,7 +52,7 @@ This project implements a streamlined version of ACDC that discovers computation
 
 1. Clone the repository:
 ```bash
-git clone <repository-url>
+git clone https://github.com/agomes42/LLMConstructions
 cd LLMConstructions
 ```
 
@@ -38,15 +69,17 @@ pip install -r requirements.txt
 
 ### Basic Usage
 
-```python
-from transformer_lens import HookedTransformer
-from simple_acdc import SimpleACDC
+**⚠️ Important**: Always use `gemma_utils.load_gemma_model()` for proper model configuration and device settings.
 
-# Load model
-model = HookedTransformer.from_pretrained("google/gemma-2-2b")
+```python
+import gemma_utils
+import simple_acdc
+
+# Load model (IMPORTANT: Use gemma_utils for proper model configuration)
+model, tokenizer = gemma_utils.load_gemma_model()
 
 # Initialize ACDC
-acdc = SimpleACDC(model, max_layer=4, threshold=0.01, separate_kv=True)
+acdc = simple_acdc.SimpleACDC(model, max_layer=4, threshold=0.01, separate_kv=True)
 
 # Discover circuit
 circuit, effect = acdc.discover_circuit(
@@ -58,35 +91,22 @@ circuit, effect = acdc.discover_circuit(
 
 # Visualize results
 acdc.visualize_circuit(circuit, save_path="circuit.png")
+
+# Advanced: Build and merge multiple circuits
+merged_circuit, individual_circuits, effects = simple_acdc.build_and_merge_circuits(
+    model=model,
+    max_layer=4,
+    original_text="He kicked the bucket",
+    corrupted_texts=["He kicked the buckets", "He kicked the pail"],
+    target_text="He died",
+    thresholds=[0.01, 0.015],
+    visualize_individual=True
+)
+
+# Analyze attention with Q-K dot products
+simple_acdc.compute_qk_dot_products(model, ["He kicked the bucket", "face the music"], 
+                                   layer=2, head=3, q_index=2, k_index=1)
 ```
-
-## 🎨 Example Circuit Visualization
-
-Here's an example circuit discovered for the idiom "kicked the bucket" → "died":
-
-![Circuit Discovery Example](bucket_this_circuit.png)
-
-This visualization shows the discovered computational circuit for understanding how the model processes the idiom "He kicked the bucket" and relates it to the meaning "He died". The circuit was discovered using:
-
-- **Original text**: "He kicked the bucket" 
-- **Corrupted text**: "He kicked this bucket" (minimal word change)
-- **Target**: "He died" (semantic meaning)
-- **Threshold**: 0.004 (low threshold for detailed circuit)
-
-### Circuit Interpretation
-
-The graph shows:
-
-- **Nodes**: Represent components in the transformer (residual streams, attention heads)
-- **Edges**: Show information flow with effect sizes as edge weights
-- **Colors**: Different node types (residual vs attention components)
-- **Edge Types**: 
-  - `resid`: Residual stream connections between layers
-  - `attn_out`: Attention head outputs to residual stream  
-  - `query`: Query connections from residual to attention heads
-  - `key`/`value`: Key/Value connections from previous tokens (when `separate_kv=True`)
-
-This particular circuit reveals how the model identifies and processes the idiomatic meaning of "kicked the bucket" by tracking the key components involved in semantic transformation from literal action to metaphorical meaning.
 
 ### Multi-Text Analysis
 
@@ -123,26 +143,13 @@ results = multi_corrupted_threshold_sweep(
 
 - **Residual Nodes**: Represent residual stream states at (layer, token position)
 - **Attention Nodes**: Represent attention head outputs at (layer, head, token position)
+- **Circuit Merging**: Union-based combination of multiple circuits with filtering options
 - **Edge Types**:
   - `resid`: Layer-to-layer residual connections
   - `attn_out`: Attention head output to residual stream
   - `query`: Query connections from residual to attention
   - `key`/`value`: Key/Value connections (separate when `separate_kv=True`)
   - `key_value`: Combined K/V connections (when `separate_kv=False`)
-
-## 📁 Project Structure
-
-```
-LLMConstructions/
-├── simple_acdc.py           # Main ACDC implementation
-├── test_acdc.ipynb          # Interactive testing notebook
-├── experiments.ipynb        # Experimental analysis
-├── gemma_utils.py          # Gemma model utilities
-├── requirements.txt        # Python dependencies
-├── quantile_approach/      # SAE quantile analysis
-├── textfiles/             # Test text data
-└── README.md              # This file
-```
 
 ## 🔧 Core Components
 
@@ -157,7 +164,10 @@ The main class for circuit discovery with the following key methods:
 
 ### Utility Functions
 
-- `threshold_sweep()`: Explore threshold parameter space
+- `threshold_sweep()`: Explore threshold parameter space with enhanced edge counting
+- `build_and_merge_circuits()`: Create and combine multiple circuits with workflow visualization
+- `filter_circuit_nodes()`: Filter circuits by labels or membership criteria
+- `compute_qk_dot_products()`: Analyze Q-K attention dot products with token identification
 - `multi_corrupted_threshold_sweep()`: Compare across corruptions
 - `visualize_sweep_results()`: Plot threshold sweep results
 
@@ -185,27 +195,8 @@ The project includes several example analyses:
 3. **Corruption Robustness**: How circuits change with different corruptions
 4. **Attention Granularity**: Separate key/value vs combined analysis
 
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
-## 📄 License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
-
-## 🙏 Acknowledgments
-
-- Original ACDC paper and implementation
-- TransformerLens library for model analysis
-- HuggingFace for model hosting
-- NetworkX for graph visualization
-
 ## 📚 References
 
 - [ACDC: Automatic Circuit Discovery](https://arxiv.org/abs/2304.14997)
 - [TransformerLens Documentation](https://transformerlensorg.github.io/TransformerLens/)
-- [Mechanistic Interpretability](https://www.anthropic.com/research)
+- [Gemma 2 2B](https://arxiv.org/abs/2408.00118)
