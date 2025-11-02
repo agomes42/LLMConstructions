@@ -2,11 +2,11 @@
 
 A simplified and custom implementation of Automatic Circuit Discovery (ACDC) for transformer language models, focusing on interpretability and circuit analysis using activation patching techniques.
 
-## 🔍 Overview
+## Overview
 
 This project implements a streamlined version of ACDC that discovers computational circuits within transformer models by identifying the minimal set of components responsible for specific behaviors. Unlike the original ACDC which prunes from a full computational graph, this implementation uses an incremental building approach for better efficiency and interpretability.
 
-## ✨ Key Features
+## Key Features
 
 - **Enhanced ACDC Implementation**: Circuit discovery with merging and filtering capabilities
 - **Performance Optimized**: Smart caching system for faster circuit discovery
@@ -18,7 +18,7 @@ This project implements a streamlined version of ACDC that discovers computation
 - **Threshold Sweeping**: Automated parameter exploration with enhanced metrics
 - **Attention Granularity**: Separate key/value analysis for fine-grained attention circuits
 
-## 🎨 Example Circuit Visualization
+## Example Circuit Visualization
 
 Here's an example circuit discovered for the idiom "kicked the bucket" → "died":
 
@@ -46,7 +46,7 @@ The graph shows:
 
 This particular circuit reveals how the model identifies and processes the idiomatic meaning of "kicked the bucket" by tracking the key components involved in semantic transformation from literal action to metaphorical meaning.
 
-## 🚀 Quick Start
+## Quick Start
 
 ### Installation
 
@@ -69,7 +69,7 @@ pip install -r requirements.txt
 
 ### Basic Usage
 
-**⚠️ Important**: Always use `gemma_utils.load_gemma_model()` for proper model configuration and device settings.
+**Important**: Always use `gemma_utils.load_gemma_model()` for proper model configuration and device settings.
 
 ```python
 import gemma_utils
@@ -128,7 +128,7 @@ results = multi_corrupted_threshold_sweep(
 )
 ```
 
-## 🧠 Algorithm Overview
+## Algorithm Overview
 
 ### Circuit Discovery Process
 
@@ -151,7 +151,7 @@ results = multi_corrupted_threshold_sweep(
   - `key`/`value`: Key/Value connections (separate when `separate_kv=True`)
   - `key_value`: Combined K/V connections (when `separate_kv=False`)
 
-## 🔧 Core Components
+## Core Components
 
 ### SimpleACDC Class
 
@@ -171,31 +171,7 @@ The main class for circuit discovery with the following key methods:
 - `multi_corrupted_threshold_sweep()`: Compare across corruptions
 - `visualize_sweep_results()`: Plot threshold sweep results
 
-## 📊 Performance Optimizations
-
-- **Smart Caching**: Cache clean and corrupted activations
-- **Earliest Layer Tracking**: Skip unnecessary computations
-- **Incremental Plotting**: Real-time visualization during long runs
-- **Edge Merging**: Combine multiple edges in visualization
-
-## 🎯 Use Cases
-
-- **Interpretability Research**: Understand how language models process information
-- **Circuit Analysis**: Identify computational pathways for specific behaviors
-- **Attention Mechanisms**: Study key/value attention patterns
-- **Model Debugging**: Find components responsible for specific outputs
-- **Comparative Analysis**: Compare circuits across different corruptions
-
-## 📈 Example Analyses
-
-The project includes several example analyses:
-
-1. **Idiom Processing**: "kicked the bucket" → "died" circuits
-2. **Threshold Sensitivity**: Effect of different threshold values
-3. **Corruption Robustness**: How circuits change with different corruptions
-4. **Attention Granularity**: Separate key/value vs combined analysis
-
-## 📚 References
+## References
 
 - [ACDC: Automatic Circuit Discovery](https://arxiv.org/abs/2304.14997)
 - [TransformerLens Documentation](https://transformerlensorg.github.io/TransformerLens/)
