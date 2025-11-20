@@ -1,35 +1,29 @@
-# LLM Circuit Discovery with Simple ACDC
+# LLM Circuit Discovery for Idioms
 
-A simplified and custom implementation of Automatic Circuit Discovery (ACDC) for transformer language models, focusing on interpretability and circuit analysis using activation patching techniques.
+A custom implementation of Automatic Circuit Discovery (ACDC) for transformer language models. This repo contains all code and examples for the paper **Anatomy of an Idiom: Tracing Non-Compositionality in Language Models**.
 
-## Overview
-
-This project implements a streamlined version of ACDC that discovers computational circuits within transformer models by identifying the minimal set of components responsible for specific behaviors. Unlike the original ACDC which prunes from a full computational graph, this implementation uses an incremental building approach for better efficiency and interpretability.
 
 ## Key Features
 
-- **Enhanced ACDC Implementation**: Circuit discovery with merging and filtering capabilities
-- **Performance Optimized**: Smart caching system for faster circuit discovery
-- **Circuit Merging**: Combine and filter multiple circuits for comparative analysis
+- **Attention Granularity**: Separately patches Q/K/V connections for fine-grained attention circuits
+- **Circuit Merging**: Circuit discovery with merging of single-corruption circuits into a single circuit representing an idiom's processing
 - **Advanced Visualization**: Dynamic head positioning and color-coded edge weights
 - **Q-K Analysis Tools**: Analyze attention mechanisms with dot product computation
-- **Multi-Text Comparison**: Compare circuits across multiple corrupted texts
-- **Interactive Visualization**: NetworkX-based circuit graphs with merged edge display
-- **Threshold Sweeping**: Automated parameter exploration with enhanced metrics
-- **Attention Granularity**: Separate key/value analysis for fine-grained attention circuits
+- **Threshold Sweeping**: Automated circuit threshold parameter exploration with enhanced metrics
+
 
 ## Example Circuit Visualization
 
-Here's an example circuit discovered for the idiom "kicked the bucket" → "died":
+Here is an example (single-corruption) circuit discovered for the idiom "a piece of cake" → "easy":
 
-![Circuit Discovery Example](example_booted_bucket.png)
+![Circuit Discovery Example](cake_chunk_005.png)
 
-This visualization shows the discovered computational circuit for understanding how the model processes the idiom "He kicked the bucket" and relates it to the meaning "He died". The circuit was discovered using:
+This visualization shows the discovered computational circuit for how the model processes the idiom "That was a piece of cake" and relates it to the meaning "That was easy". The circuit was discovered using:
 
-- **Original text**: "He kicked the bucket" 
-- **Corrupted text**: "He booted the bucket" (minimal word change)
-- **Target**: "He died" (semantic meaning)
-- **Threshold**: 0.017
+- **Original text**: "That was a piece of cake" 
+- **Corrupted text**: "That was a chunk of cake" (minimal word change)
+- **Target**: "That was easy" (semantic meaning)
+- **Threshold**: 0.005
 
 ### Circuit Interpretation
 
@@ -44,7 +38,8 @@ The graph shows:
   - `query`: Query connections from residual to attention heads
   - `key`/`value`: Key/Value connections from previous tokens (when `separate_kv=True`)
 
-This particular circuit reveals how the model identifies and processes the idiomatic meaning of "kicked the bucket" by tracking the key components involved in semantic transformation from literal action to metaphorical meaning.
+This particular circuit reveals how the model identifies and processes the idiomatic meaning of "a piece of cake" by tracking the key components involved in semantic transformation from literal action to metaphorical meaning. Many such single-corruption circuits can be merged to form a comprehensive idiom circuit.
+
 
 ## Quick Start
 
@@ -69,7 +64,7 @@ pip install -r requirements.txt
 
 ### Basic Usage
 
-**Important**: Always use `gemma_utils.load_gemma_model()` for proper model configuration and device settings.
+**Important**: Always use `gemma_utils.load_gemma_model()` for proper model configuration and device settings. Also see 'idiom_tests.ipynb' for full examples.
 
 ```python
 import gemma_utils
@@ -128,28 +123,6 @@ results = multi_corrupted_threshold_sweep(
 )
 ```
 
-## Algorithm Overview
-
-### Circuit Discovery Process
-
-1. **Root Initialization**: Start with final token at maximum layer
-2. **Breadth-First Traversal**: Explore computational graph in reverse layer order
-3. **Activation Patching**: Test component importance using clean vs corrupted activations
-4. **Effect Measurement**: Use cosine similarity between embeddings and target text
-5. **Threshold Selection**: Include components with effect size ≥ threshold
-6. **Smart Caching**: Cache activations for performance optimization
-
-### Circuit Components
-
-- **Residual Nodes**: Represent residual stream states at (layer, token position)
-- **Attention Nodes**: Represent attention head outputs at (layer, head, token position)
-- **Circuit Merging**: Union-based combination of multiple circuits with filtering options
-- **Edge Types**:
-  - `resid`: Layer-to-layer residual connections
-  - `attn_out`: Attention head output to residual stream
-  - `query`: Query connections from residual to attention
-  - `key`/`value`: Key/Value connections (separate when `separate_kv=True`)
-  - `key_value`: Combined K/V connections (when `separate_kv=False`)
 
 ## Core Components
 
@@ -159,20 +132,13 @@ The main class for circuit discovery with the following key methods:
 
 - `discover_circuit()`: Find minimal circuit for a behavior
 - `visualize_circuit()`: Create graph visualization
-- `get_effect()`: Measure component importance
-- `_cache_activations()`: Performance optimization
-
-### Utility Functions
-
 - `threshold_sweep()`: Explore threshold parameter space with enhanced edge counting
-- `build_and_merge_circuits()`: Create and combine multiple circuits with workflow visualization
-- `filter_circuit_nodes()`: Filter circuits by labels or membership criteria
+- `build_and_merge_circuits()`: Create and combine multiple circuits with visualization
 - `compute_qk_dot_products()`: Analyze Q-K attention dot products with token identification
-- `multi_corrupted_threshold_sweep()`: Compare across corruptions
-- `visualize_sweep_results()`: Plot threshold sweep results
+
 
 ## References
 
 - [ACDC: Automatic Circuit Discovery](https://arxiv.org/abs/2304.14997)
 - [TransformerLens Documentation](https://transformerlensorg.github.io/TransformerLens/)
-- [Gemma 2 2B](https://arxiv.org/abs/2408.00118)
+- [Gemma 2--2B](https://arxiv.org/abs/2408.00118)

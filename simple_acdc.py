@@ -18,7 +18,8 @@ Key Components:
 - Edges: Represent information flow between components (residual connections, attention outputs, Q/K/V connections)
 - Circuit Discovery: Breadth-first traversal through the computational graph, testing component importance
 - Circuit Merging: Ability to combine multiple circuits and filter nodes for comparative analysis
-- Enhanced Visualization: Dynamic head positioning, color-coded edges, and individual circuit display options
+- Enhanced Visualization: Clean, professional visualization with token labeling, grid lines, and simplified layout
+- Interpretability Pruning: Optional final step to remove attention heads with no inputs or only Query edges
 
 METHODOLOGY:
 ============
@@ -96,26 +97,36 @@ FEATURES:
 3. **Query-level Control**: Optional testing of individual query connections (corrupt_q parameter)
 4. **Incremental Building**: Avoids unnecessary computation by building minimal circuits
 5. **Effect Size Tracking**: All edges store their measured causal effect sizes
-6. **Enhanced Visualization**: NetworkX-based visualization with:
-   - Color-coded edge types (red/blue for positive/negative effects)
-   - Thickness proportional to effect magnitude
-   - Simplified head labels (H0, H1, etc.)
-   - Dynamic head positioning with even distribution based on circuit composition
-   - Conditional query edge coloring based on corrupt_q setting
+6. **Enhanced Visualization**: Clean, professional circuit visualization with:
+   - Minimal, clean layout without axes, titles, or legends for publication quality
+   - Grid lines for better spatial organization
+   - Token-aware labeling: actual token text for embeddings, layer numbers for residuals
+   - Simplified attention head labels (just head number centered on node)
+   - Higher contrast node styling (alpha=1) and optimized node sizes
+   - Edge thickness proportional to effect magnitude with improved scaling
+   - Streamlined edge labels for K/V connections without background boxes
+   - Automatic original token storage for consistent labeling across visualizations
 7. **Circuit Merging & Filtering**: Tools for combining and filtering circuits:
    - Union-based circuit merging with optional node filtering
-   - Label-based filtering for selective node inclusion/exclusion
+   - Attention head filtering to remove nodes with no input connections
    - Individual circuit visualization before merging for workflow transparency
+   - Interpretability pruning option to remove MLP-like and pre-idiom attention heads
 8. **Advanced Analysis Tools**:
    - Q-K dot product computation using rotated embeddings for attention analysis
+   - Q-K cross matrix computation for comparing attention patterns across texts
    - Token identification and detokenization for result interpretation
    - Proper GQA head mapping for accurate multi-head attention analysis
-9. **Flexible Metrics**: Currently uses cosine similarity but extensible to other metrics
-10. **Caching**: Corrupted activations are cached for efficient repeated patching
-11. **Consistency Checking**: Prevents conflicting patch operations on same components
-12. **Class Properties**: `include_current_token` as class property eliminates parameter passing complexity
-13. **Threshold Analysis**: Enhanced threshold sweep with weighted edge counting for accurate metrics
-14. **Batch Processing**: Support for building and merging multiple circuits in single workflow
+9. **Professional Workflow Support**:
+   - Enhanced threshold sweep visualization with scientific notation and dual y-axes
+   - Build and merge circuits function with comprehensive reporting and optional pruning
+   - Structured output separating attention output edges from Q/K/V edges
+   - Clean visualization suitable for academic publication
+10. **Flexible Metrics**: Currently uses cosine similarity but extensible to other metrics
+11. **Caching**: Corrupted activations are cached for efficient repeated patching
+12. **Consistency Checking**: Prevents conflicting patch operations on same components
+13. **Class Properties**: `include_current_token` as class property eliminates parameter passing complexity
+14. **Threshold Analysis**: Enhanced threshold sweep with weighted edge counting for accurate metrics
+15. **Batch Processing**: Support for building and merging multiple circuits in single workflow
 
 LIMITATIONS:
 ============
@@ -143,30 +154,34 @@ circuit = acdc.discover_circuit(
 # Visualize discovered circuit with enhanced display
 acdc.visualize_circuit(circuit, save_path="idiom_circuit.png")
 
-# Build and merge multiple circuits with workflow visualization
+# Build and merge multiple circuits with workflow visualization and interpretability pruning
 circuits_info = [
-    {"label": "bucket", "original": "He kicked the bucket", "corrupted": "He kicked the pail", "target": "He died"},
-    {"label": "music", "original": "face the music", "corrupted": "face the band", "target": "accept consequences"}
+    {"original": "He kicked the bucket", "corrupted": "He kicked the pail", "target": "He died"},
+    {"original": "face the music", "corrupted": "face the band", "target": "accept consequences"}
 ]
 merged_circuit = build_and_merge_circuits(
-    acdc, circuits_info, min_token_pos=2, 
+    acdc, 
+    max_layer=4,
+    original_text="He kicked the bucket",
+    corrupted_texts=["He kicked the pail", "He faced the band"],
+    target_text="He died",
+    thresholds=[0.005, 0.007],
+    min_token_pos=2, 
     visualize_individual=True,  # Show individual circuits before merging
-    save_individual=True
+    save_individual_paths=["circuit1.png", "circuit2.png"],
+    prune_for_interpretability=True  # Apply final pruning for interpretability
 )
 
-# Filter merged circuit to specific components
-filtered_circuit = filter_circuit_nodes(merged_circuit, 
-                                       include_labels=["bucket", "music"])
-
-# Analyze attention mechanisms with Q-K dot products
+# Analyze attention mechanisms with Q-K dot products and cross matrices
 texts = ["He kicked the bucket", "face the music"]
 compute_qk_dot_products(model, texts, layer=2, head=3, q_index=2, k_index=1)
+compute_qk_cross_matrix(model, texts, layer=2, head=3, q_index=2, k_index=1)
 
-# Run threshold sweep for parameter tuning with accurate edge counting
-thresholds, metrics = threshold_sweep(model, max_layer=4, 
-                                     original_text="He kicked the bucket",
-                                     corrupted_text="He kicked the pail", 
-                                     target_text="He died")
+# Run enhanced threshold sweep with scientific visualization
+thresholds, metrics, edge_counts = threshold_sweep(model, max_layer=4, 
+                                                 original_text="He kicked the bucket",
+                                                 corrupted_text="He kicked the pail", 
+                                                 target_text="He died")
 ```
 
 IMPLEMENTATION NOTES:
@@ -179,6 +194,16 @@ IMPLEMENTATION NOTES:
   - Correct GQA head mapping prevents incorrect K/V head associations
   - RoPE integration using hook_rot_q/hook_rot_k ensures exact attention replication
   - Custom attention computation matches model behavior to ~1e-6 precision
+- **Enhanced visualization features**:
+  - Clean, publication-ready visualizations without distracting elements
+  - Automatic token labeling and grid organization for spatial clarity
+  - Professional threshold sweep plots with scientific notation
+  - Structured output reporting separating edge types for better analysis
+- **Workflow improvements**:
+  - Original token storage for consistent visualization labeling
+  - Interpretability pruning option for cleaner circuit analysis
+  - Enhanced cross-matrix analysis for attention pattern comparison
+  - Professional reporting with organized edge categorization
 - Designed for research and interpretability applications on transformer language models
 
 AUTHORS: Research implementation for mechanistic interpretability studies
@@ -298,6 +323,7 @@ class SimpleACDC:
         self.graph = IncrementalCircuitGraph()
         self.device = model.cfg.device
         self.target_embedding = None  # Cache target embedding
+        self.original_tokens = None  # Store original tokens for visualization
     
     def get_sequence_length(self, text: str) -> int:
         """Get the sequence length for a text"""
@@ -600,6 +626,9 @@ class SimpleACDC:
             
         # Get sequence lengths first
         orig_len = self.get_sequence_length(original_text)
+        
+        # Store original tokens for visualization
+        self.original_tokens = self.detokenize(original_text)
         
         # Start with empty circuit
         circuit = IncrementalCircuitGraph()
@@ -977,7 +1006,7 @@ class SimpleACDC:
         # Positive effect means the clean V connection is better (connection is important)
         return clean_metric - corrupted_metric
 
-    def visualize_circuit(self, circuit: IncrementalCircuitGraph, save_path: Optional[str] = None, min_token_pos: int = 0, quiet: bool = False):
+    def visualize_circuit(self, circuit: IncrementalCircuitGraph, save_path: Optional[str] = None, min_token_pos: int = 0, quiet: bool = False, original_text: str = None):
         """Visualize the discovered circuit using networkx with structured layout"""
         G = nx.DiGraph()
         
@@ -1110,6 +1139,14 @@ class SimpleACDC:
                 # Fallback for any other node types
                 pos[node] = (0, 0)
         
+        # Add grid lines for better readability (draw first so they appear behind nodes)
+        for layer in range(self.max_layer + 1):
+            plt.axvline(x=layer, color='lightgray', linestyle='--', alpha=0.4)
+        for token_offset in range(token_range + 1):
+            actual_token = effective_min_token + token_offset
+            y_pos = token_range - token_offset
+            plt.axhline(y=y_pos, color='lightgray', linestyle='--', alpha=0.4)
+        
         # Color nodes by type
         node_colors = []
         for node in G.nodes():
@@ -1127,7 +1164,7 @@ class SimpleACDC:
             embedding_pos = {n: pos[n] for n in embedding_nodes}
             nx.draw_networkx_nodes(G.subgraph(embedding_nodes), embedding_pos,
                                   node_color=embedding_colors, node_shape='^',
-                                  node_size=1000, alpha=0.9)
+                                  node_size=1200, alpha=1)
         
         # Draw residual nodes (circles)
         residual_nodes = [n for n in G.nodes() if 'H' not in n and 'Embed_' not in n]
@@ -1136,7 +1173,7 @@ class SimpleACDC:
             residual_pos = {n: pos[n] for n in residual_nodes}
             nx.draw_networkx_nodes(G.subgraph(residual_nodes), residual_pos, 
                                   node_color=residual_colors, node_shape='o',
-                                  node_size=1200, alpha=0.8)
+                                  node_size=1200, alpha=1)
         
         # Draw attention nodes (squares)  
         attention_nodes = [n for n in G.nodes() if 'H' in n]
@@ -1145,7 +1182,7 @@ class SimpleACDC:
             attention_pos = {n: pos[n] for n in attention_nodes}
             nx.draw_networkx_nodes(G.subgraph(attention_nodes), attention_pos,
                                   node_color=attention_colors, node_shape='s',
-                                  node_size=700, alpha=0.9)
+                                  node_size=800, alpha=1)
         
         # Draw edges with stronger colors and better visibility
         edge_colors = []
@@ -1170,7 +1207,7 @@ class SimpleACDC:
             effect = G[u][v]['effect']
             if effect is not None:
                 # Scale thickness with effect magnitude relative to threshold
-                thickness = max(1.0, (abs(effect) / self.threshold) ** 0.7)  # Non-linear scaling for visibility
+                thickness = max(1.0, (abs(effect) / self.threshold) ** 0.6)  # Non-linear scaling for visibility
                 weights.append(thickness)
             else:
                 weights.append(3.0)  # Default thickness for non-measured edges
@@ -1179,27 +1216,79 @@ class SimpleACDC:
         for i, (u, v) in enumerate(G.edges()):
             nx.draw_networkx_edges(G, pos, edgelist=[(u, v)], 
                                   width=weights[i], alpha=edge_alphas[i],
-                                  edge_color=edge_colors[i], arrows=True, 
-                                  arrowsize=15, arrowstyle='->')
+                                  edge_color=edge_colors[i], arrows=False)
         
         # Draw labels above nodes with larger font
-        label_pos = {n: (pos[n][0], pos[n][1] + 0.1) for n in G.nodes()}
+        label_pos = {n: (pos[n][0], pos[n][1] - 0.15) for n in G.nodes()}
         
-        # Create simplified labels for attention heads (show only "Hx" instead of "LyHx_Tz")
+        # Create simplified labels for different node types
         labels = {}
+        
+        # Get actual tokens if original_text is provided
+        actual_tokens = None
+        if original_text:
+            actual_tokens = self.detokenize(original_text)
+        elif hasattr(self, 'original_tokens') and self.original_tokens is not None:
+            actual_tokens = self.original_tokens
+        
         for node in G.nodes():
             if 'H' in node and '_T' in node:
-                # Extract head number from "LyHx_Tz" format
+                # For attention heads: show only the head number on the center of the node
                 parts = node.split('_T')[0]  # Get "LyHx" part
                 if 'H' in parts:
                     head_part = parts.split('H')[1]  # Get "x" from "LyHx"
-                    labels[node] = f"H{head_part}"
+                    labels[node] = head_part  # Just the head number
                 else:
-                    labels[node] = node
+                    labels[node] = ""
+            elif 'Embed_T' in node:
+                # For embedding nodes: show the actual token above the node
+                token_pos = int(node.split('_T')[1])
+                if actual_tokens and token_pos < len(actual_tokens):
+                    token_text = actual_tokens[token_pos]
+                    # Clean up the token text (remove spaces, truncate if too long)
+                    token_text = token_text.strip()
+                    if len(token_text) > 8:  # Truncate long tokens
+                        token_text = token_text[:8] + "..."
+                    labels[node] = token_text
+                else:
+                    labels[node] = f"T{token_pos}"
+            elif 'L' in node and '_T' in node and 'H' not in node:
+                # For residual nodes: only label the final token (bottom row) with layer number
+                parts = node.split('_T')
+                layer_part = parts[0]
+                token_pos = int(parts[1])
+                layer_num = int(layer_part.split('L')[1])
+                
+                # Check if this is the final token position (bottom row in visualization)
+                if token_pos == max_token_pos:
+                    labels[node] = str(layer_num)  # Just the layer number
+                    # Position the label slightly below the node
+                    label_pos[node] = (pos[node][0], pos[node][1] - 0.15)
+                else:
+                    labels[node] = ""  # No label for non-final residual nodes
             else:
-                labels[node] = node
+                labels[node] = ""
         
-        nx.draw_networkx_labels(G, label_pos, labels, font_size=14, font_weight='bold')
+        # Draw labels for attention heads on the center of nodes (no offset)
+        attention_labels = {n: labels[n] for n in G.nodes() if 'H' in n and labels[n] != ""}
+        if attention_labels:
+            attention_label_pos = {n: pos[n] for n in attention_labels.keys()}
+            nx.draw_networkx_labels(G, attention_label_pos, attention_labels, 
+                                  font_size=20, font_weight='bold', font_color='white')
+        
+        # Draw labels for residual nodes
+        residual_labels = {n: labels[n] for n in G.nodes() if n not in attention_labels and labels[n] != "" and 'Embed_' not in n}
+        if residual_labels:
+            residual_label_pos = {n: label_pos[n] for n in residual_labels.keys()}
+            nx.draw_networkx_labels(G, residual_label_pos, residual_labels, 
+                                  font_size=20, font_weight='bold')
+        
+        # Draw labels for embedding nodes (smaller text)
+        embed_labels = {n: labels[n] for n in G.nodes() if n not in attention_labels and labels[n] != "" and 'Embed_' in n}
+        if embed_labels:
+            embed_label_pos = {n: label_pos[n] for n in embed_labels.keys()}
+            nx.draw_networkx_labels(G, embed_label_pos, embed_labels, 
+                                  font_size=20, font_weight='bold')
         
         # Add edge labels for K, V, or KV connections
         edge_labels = {}
@@ -1218,49 +1307,21 @@ class SimpleACDC:
             for (u, v), label in edge_labels.items():
                 x = (pos[u][0] + pos[v][0]) / 2
                 y = (pos[u][1] + pos[v][1]) / 2
-                plt.text(x, y, label, fontsize=20, color='darkgreen', ha='center', va='center', bbox=dict(boxstyle='round,pad=0.2', facecolor='white', alpha=0.7, edgecolor='none'))
+                plt.text(x, y, label, fontsize=18, color='black', ha='center', va='center', fontweight='bold')
         
-        # Add grid lines for better readability
-        for layer in range(self.max_layer + 1):
-            plt.axvline(x=layer, color='lightgray', linestyle='--', alpha=0.3)
-        for token_offset in range(token_range + 1):
-            actual_token = effective_min_token + token_offset
-            y_pos = token_range - token_offset
-            plt.axhline(y=y_pos, color='lightgray', linestyle='--', alpha=0.3)
+        # Set explicit plot limits to ensure all labels are visible
+        all_x = [pos[n][0] for n in G.nodes()]
+        all_y = [pos[n][1] for n in G.nodes()]
+        all_label_y = [label_pos[n][1] for n in G.nodes()]
         
-        # Add axis labels with token position information
-        plt.xlabel("Layer", fontsize=12, fontweight='bold')
-        ylabel = f"Token Position (range: {effective_min_token}-{max_token_pos}, inverted)"
-        plt.ylabel(ylabel, fontsize=12, fontweight='bold')
+        x_min, x_max = min(all_x) - 0.5, max(all_x) + 0.5
+        y_min, y_max = min(all_y + all_label_y) - 0.3, max(all_y + all_label_y) + 0.3
         
-        # Set y-axis limits to show the actual token range nicely
-        plt.ylim(-0.5, token_range + 0.5)
+        plt.xlim(x_min, x_max)
+        plt.ylim(y_min, y_max)
         
-        # Add legend with better colors
-        legend_elements = [
-            plt.Line2D([0], [0], color='red', lw=3, label='Positive Effect Edge'),
-            plt.Line2D([0], [0], color='blue', lw=3, label='Negative Effect Edge'), 
-            plt.Line2D([0], [0], color='black', lw=2, label='No Effect Measured'),
-            plt.Line2D([0], [0], marker='^', color='gold', markersize=10, 
-                      linestyle='None', label='Embedding Node'),
-            plt.Line2D([0], [0], marker='o', color='green', markersize=10, 
-                      linestyle='None', label='Residual Node'),
-            plt.Line2D([0], [0], marker='s', color='darkorange', markersize=8, 
-                      linestyle='None', label='Attention Head')
-        ]
-        
-        # Add legend note about edge thickness and labels
-        legend_text = "Note: Edge thickness ∝ effect magnitude\nEdge labels: K=Key, V=Value, KV=Key+Value"
-        if self.separate_kv:
-            legend_text += "\nSeparate K/V mode: Key and Value connections tested independently"
-        else:
-            legend_text += "\nCombined K/V mode: Key and Value connections tested together"
-            
-        plt.legend(handles=legend_elements, loc='upper left', bbox_to_anchor=(1.02, 1))
-        plt.figtext(0.02, 0.02, legend_text, fontsize=10, style='italic')
-        
-        plt.title("Discovered Circuit (Structured Layout)", fontsize=14, fontweight='bold')
-        plt.grid(True, alpha=0.3)
+        # Remove axis labels, legend, title, and notes for cleaner visualization
+        plt.axis('off')  # Remove all axis elements
         plt.tight_layout()
         
         if save_path:
@@ -1275,12 +1336,24 @@ class SimpleACDC:
             print(f"\nCircuit Summary:")
             print(f"Nodes: {len(circuit.nodes)}")
             print(f"Edges: {len(circuit.edges)}")
-            print(f"\nEdges by effect size:")
-            sorted_edges = sorted(circuit.edges, key=lambda e: abs(e.effect_size) if e.effect_size else 0, reverse=True)
-            for edge in sorted_edges:
-                if edge.effect_size is not None:
-                    effect_str = f"{edge.effect_size:.4f}"
-                    print(f"  {edge.parent} → {edge.child} ({edge.edge_type}): {effect_str}")
+            
+            # Separate edges by type
+            attn_out_edges = [edge for edge in circuit.edges if edge.edge_type == 'attn_out' and edge.effect_size is not None]
+            qkv_edges = [edge for edge in circuit.edges if edge.edge_type in ['query', 'key', 'value', 'key_value'] and edge.effect_size is not None]
+            
+            # Sort by effect size (descending)
+            attn_out_edges.sort(key=lambda e: abs(e.effect_size), reverse=True)
+            qkv_edges.sort(key=lambda e: abs(e.effect_size), reverse=True)
+            
+            print(f"\nAttention Output Edges by effect size:")
+            for edge in attn_out_edges:
+                effect_str = f"{edge.effect_size:.4f}"
+                print(f"  {edge.parent} → {edge.child} ({edge.edge_type}): {effect_str}")
+            
+            print(f"\nQuery/Key/Value Edges by effect size:")
+            for edge in qkv_edges:
+                effect_str = f"{edge.effect_size:.4f}"
+                print(f"  {edge.parent} → {edge.child} ({edge.edge_type}): {effect_str}")
 
 
 def threshold_sweep(model: HookedTransformer, max_layer: int,
@@ -1302,6 +1375,8 @@ def threshold_sweep(model: HookedTransformer, max_layer: int,
         quiet: Whether to suppress detailed output (default: True)
     Returns: thresholds, metrics
     """
+    import numpy as np
+    
     if thresholds is None:
         ts = [round(x, 4) for x in np.arange(0.0005, 0.0505, 0.0005)]
     else:
@@ -1327,22 +1402,22 @@ def threshold_sweep(model: HookedTransformer, max_layer: int,
         edge_counts.append(max(1, num_weighted_edges))  # Avoid log(0) by using minimum of 1
         
     if plot:
-        fig, ax1 = plt.subplots(figsize=(10, 6))
+        fig, ax1 = plt.subplots(figsize=(6, 4))
         
         # Plot metrics on left y-axis
         color1 = 'tab:blue'
-        ax1.set_xlabel('Threshold')
-        ax1.set_ylabel('Metric (Cosine Similarity)', color=color1)
-        line1 = ax1.plot(ts, metrics, marker='o', color=color1, label='Cosine Similarity')
+        ax1.set_xlabel(r'$\tau$')
+        ax1.set_ylabel(r'$\cos \theta$', color=color1)
+        line1 = ax1.plot(ts, metrics, marker='o', markersize=4, color=color1, label='Cosine Similarity')
         ax1.tick_params(axis='y', labelcolor=color1)
         ax1.grid(True, alpha=0.3)
         
         # Create second y-axis for edge count (log scale)
         ax2 = ax1.twinx()
         color2 = 'tab:red'
-        ax2.set_ylabel('Number of Edges (log scale)', color=color2)
+        ax2.set_ylabel('Number of edges', color=color2)
         ax2.set_yscale('log')
-        line2 = ax2.plot(ts, edge_counts, marker='s', color=color2, label='Edge Count')
+        line2 = ax2.plot(ts, edge_counts, marker='s', markersize=4, color=color2, label='Edge Count')
         ax2.tick_params(axis='y', labelcolor=color2)
         
         # Rescale axes to use full plot area
@@ -1359,7 +1434,10 @@ def threshold_sweep(model: HookedTransformer, max_layer: int,
         else:
             ax2.set_ylim(edge_min * 0.5, edge_max * 2)
         
-        plt.title(f'{corrupted_text} - Threshold Sweep')
+        # Set x-axis ticks to multiples of 0.005
+        x_min, x_max = min(ts), max(ts)
+        x_ticks = np.arange(0.005 * np.ceil(x_min / 0.005), x_max + 0.005, 0.005)
+        ax1.set_xticks(x_ticks)
         
         # Add legend
         lines1, labels1 = ax1.get_legend_handles_labels()
@@ -1527,6 +1605,95 @@ def merge_circuits(circuits: List[IncrementalCircuitGraph]) -> IncrementalCircui
     
     return merged_circuit
 
+def _prune_for_interpretability(circuit: IncrementalCircuitGraph, quiet: bool = False) -> IncrementalCircuitGraph:
+    """
+    Apply final interpretability pruning to remove attention heads that:
+    1. Have no incoming edges (acting like MLPs - single token processing)
+    2. Have only Query incoming edges (attending to pre-idiom tokens)
+    
+    This produces H_tot_tilde which is more interpretable but may not faithfully reproduce G.
+    
+    Args:
+        circuit: Original merged circuit (H_tot)
+        quiet: Whether to suppress detailed output
+        
+    Returns:
+        Pruned circuit (H_tot_tilde) with attention heads removed for interpretability
+    """
+    if not quiet:
+        print("Analyzing attention heads for interpretability pruning...")
+    
+    pruned_circuit = IncrementalCircuitGraph()
+    
+    # Copy basic circuit properties
+    pruned_circuit.hooks_to_patch = circuit.hooks_to_patch.copy()
+    pruned_circuit.clean_activations = circuit.clean_activations.copy()
+    pruned_circuit.excluded_attention_heads = circuit.excluded_attention_heads.copy()
+    pruned_circuit.excluded_k_connections = circuit.excluded_k_connections.copy()
+    pruned_circuit.excluded_v_connections = circuit.excluded_v_connections.copy()
+    pruned_circuit.excluded_q_connections = circuit.excluded_q_connections.copy()
+    pruned_circuit.earliest_patched_layer = circuit.earliest_patched_layer
+    
+    # Build mapping of incoming edges for each node
+    incoming_edges = {}
+    for edge in circuit.edges:
+        child = edge.child
+        if child not in incoming_edges:
+            incoming_edges[child] = []
+        incoming_edges[child].append(edge)
+    
+    # Identify attention heads to remove
+    heads_to_remove = set()
+    heads_analyzed = 0
+    
+    for node in circuit.nodes:
+        if node.node_type == "attn":
+            heads_analyzed += 1
+            node_incoming = incoming_edges.get(node, [])
+            
+            # Case 1: No incoming edges (acts like MLP)
+            if len(node_incoming) == 0:
+                heads_to_remove.add(node)
+                if not quiet:
+                    print(f"  Removing {node}: No incoming edges (MLP-like behavior)")
+                continue
+            
+            # Case 2: Only Query edges (attending to pre-idiom tokens)
+            non_query_edges = [edge for edge in node_incoming if edge.edge_type != "query"]
+            if len(non_query_edges) == 0:
+                heads_to_remove.add(node)
+                if not quiet:
+                    print(f"  Removing {node}: Only Query edges (pre-idiom attention)")
+                continue
+            
+            # Keep this attention head
+            if not quiet:
+                edge_types = [edge.edge_type for edge in node_incoming]
+                print(f"  Keeping {node}: Has {len(node_incoming)} edges ({', '.join(set(edge_types))})")
+    
+    if not quiet:
+        print(f"Analyzed {heads_analyzed} attention heads")
+        print(f"Removing {len(heads_to_remove)} heads for interpretability")
+    
+    # Add nodes that are not removed attention heads
+    for node in circuit.nodes:
+        if node not in heads_to_remove:
+            pruned_circuit.add_node(node)
+    
+    # Add edges where both parent and child are kept
+    edges_removed = 0
+    for edge in circuit.edges:
+        if (edge.parent in pruned_circuit.nodes and 
+            edge.child in pruned_circuit.nodes):
+            pruned_circuit.add_edge(edge)
+        else:
+            edges_removed += 1
+    
+    if not quiet:
+        print(f"Removed {edges_removed} edges connected to pruned attention heads")
+    
+    return pruned_circuit
+
 def build_and_merge_circuits(model: HookedTransformer,
                            max_layer: int,
                            original_text: str,
@@ -1539,10 +1706,11 @@ def build_and_merge_circuits(model: HookedTransformer,
                            include_current_token: bool = False,
                            quiet: bool = False,
                            visualize_individual: bool = False,
-                           save_individual_paths: Optional[List[str]] = None) -> Tuple[IncrementalCircuitGraph, List[IncrementalCircuitGraph], List[float]]:
+                           save_individual_paths: Optional[List[str]] = None,
+                           prune_for_interpretability: bool = True) -> Tuple[IncrementalCircuitGraph, List[IncrementalCircuitGraph], List[float]]:
     """
     Build circuits for each corrupted text with specified thresholds, filter attention nodes
-    with no inputs, and merge all circuits.
+    with no inputs, merge all circuits, and apply optional interpretability pruning.
     
     Args:
         model: HookedTransformer model
@@ -1558,9 +1726,17 @@ def build_and_merge_circuits(model: HookedTransformer,
         quiet: Whether to suppress detailed output
         visualize_individual: Whether to visualize each individual circuit before merging
         save_individual_paths: Optional list of save paths for individual circuit visualizations
+        prune_for_interpretability: Whether to apply final pruning step that removes attention heads
+                                   with no incoming edges or only Query edges (default: True)
         
     Returns:
         Tuple of (merged_circuit, individual_circuits, final_metrics)
+        - merged_circuit: H_tot - merged circuit before interpretability pruning (always returned)
+        - individual_circuits: List of individual circuits before merging
+        - final_metrics: List of final metrics for each individual circuit
+        
+    Note: When prune_for_interpretability=True, the pruned circuit (H_tot_tilde) is visualized
+          but not returned. The original merged circuit (H_tot) is always returned.
     """
     if len(corrupted_texts) != len(thresholds):
         raise ValueError(f"Number of corrupted texts ({len(corrupted_texts)}) must match number of thresholds ({len(thresholds)})")
@@ -1693,7 +1869,56 @@ def build_and_merge_circuits(model: HookedTransformer,
         for edge_type, count in sorted(edge_types.items()):
             print(f"  {edge_type}: {count}")
     
-    return merged_circuit, individual_circuits, final_metrics
+    # Apply interpretability pruning if requested
+    if prune_for_interpretability:
+        if not quiet:
+            print(f"\n{'='*60}")
+            print("APPLYING INTERPRETABILITY PRUNING")
+            print(f"{'='*60}")
+        
+        pruned_merged_circuit = _prune_for_interpretability(merged_circuit, quiet=quiet)
+        
+        if not quiet:
+            print(f"Interpretability pruning results:")
+            print(f"  Before pruning (H_tot): {len(merged_circuit.nodes)} nodes, {len(merged_circuit.edges)} edges")
+            print(f"  After pruning (H_tot_tilde): {len(pruned_merged_circuit.nodes)} nodes, {len(pruned_merged_circuit.edges)} edges")
+            
+            # Show what was removed
+            removed_nodes = len(merged_circuit.nodes) - len(pruned_merged_circuit.nodes)
+            removed_edges = len(merged_circuit.edges) - len(pruned_merged_circuit.edges)
+            print(f"  Removed: {removed_nodes} nodes, {removed_edges} edges")
+        
+        # Visualize the pruned circuit for interpretability analysis
+        if not quiet:
+            print(f"\nVisualizing pruned circuit (H_tot_tilde) for interpretability:")
+        
+        # Create a temporary ACDC instance for visualization
+        temp_acdc = SimpleACDC(
+            model=model,
+            max_layer=max_layer,
+            threshold=min(thresholds),  # Use minimum threshold for visualization
+            corrupt_q=corrupt_q,
+            include_current_token=include_current_token,
+            separate_kv=separate_kv
+        )
+        
+        # Set original tokens for proper visualization
+        temp_acdc.original_tokens = temp_acdc.detokenize(original_text)
+        
+        temp_acdc.visualize_circuit(
+            pruned_merged_circuit,
+            save_path=None,  # Could add parameter to save pruned circuit visualization
+            min_token_pos=min_token_pos,
+            quiet=False
+        )
+        
+        # Note: The pruned circuit is generated for interpretability analysis but not returned
+        # The original merged circuit (H_tot) is always returned for faithful reproduction of G
+        
+        return merged_circuit, individual_circuits, final_metrics
+    else:
+        # Return unpruned circuit without pruning applied
+        return merged_circuit, individual_circuits, final_metrics
 
 def compute_qk_dot_products(model: HookedTransformer,
                            texts: List[str],
@@ -1776,3 +2001,120 @@ def compute_qk_dot_products(model: HookedTransformer,
     
     print("-" * 80)
     return dot_products
+
+def compute_qk_cross_matrix(model: HookedTransformer,
+                           texts: List[str],
+                           layer: int,
+                           head_idx: int,
+                           q_index: int,
+                           k_index: int) -> torch.Tensor:
+    """
+    Compute a square matrix of rotated Q-K dot products where queries come from one text
+    and keys come from another text.
+    
+    Args:
+        model: HookedTransformer model
+        texts: List of texts to analyze
+        layer: Layer number of the attention head
+        head_idx: Head index within the layer
+        q_index: Token position for Q (query)
+        k_index: Token position for K (key)
+        
+    Returns:
+        Square matrix of shape [num_texts, num_texts] where entry (i,j) is the dot product
+        between the query vector from text i and the key vector from text j.
+    """
+    num_texts = len(texts)
+    dot_product_matrix = torch.zeros(num_texts, num_texts)
+    
+    print(f"Computing Q-K cross matrix for Layer {layer}, Head {head_idx} (Q@{q_index}, K@{k_index}):")
+    print(f"Matrix size: {num_texts}x{num_texts} (rows=query text, cols=key text)")
+    
+    # Get token information from first text for reference
+    if texts:
+        first_tokens = model.to_tokens(texts[0], prepend_bos=True)
+        first_seq_len = first_tokens.shape[1]
+        
+        # Detokenize to show actual tokens
+        q_token = "N/A"
+        k_token = "N/A"
+        if q_index < first_seq_len:
+            q_token = model.tokenizer.decode([first_tokens[0, q_index].item()])
+        if k_index < first_seq_len:
+            k_token = model.tokenizer.decode([first_tokens[0, k_index].item()])
+        
+        print(f"Q token at position {q_index}: '{q_token}'")
+        print(f"K token at position {k_index}: '{k_token}'")
+    
+    print("-" * 80)
+    print("Texts:")
+    for i, text in enumerate(texts):
+        print(f"  {i}: '{text}'")
+    print("-" * 80)
+    
+    # Extract Q and K vectors for all texts
+    q_vectors = []
+    k_vectors = []
+    
+    for i, text in enumerate(texts):
+        # Tokenize text
+        tokens = model.to_tokens(text, prepend_bos=True)
+        
+        # Check if token indices are valid for this text
+        seq_len = tokens.shape[1]
+        if q_index >= seq_len or k_index >= seq_len:
+            print(f"WARNING: Text {i} - Token indices ({q_index}, {k_index}) exceed sequence length {seq_len}")
+            q_vectors.append(None)
+            k_vectors.append(None)
+            continue
+        
+        # Get rotated Q and K activations
+        with torch.no_grad():
+            _, cache = model.run_with_cache(tokens, stop_at_layer=layer + 1)
+            
+            # Extract rotated Q and K for this layer
+            q_rot = cache[f"blocks.{layer}.attn.hook_rot_q"]  # [batch, seq, n_heads, d_head]
+            k_rot = cache[f"blocks.{layer}.attn.hook_rot_k"]  # [batch, seq, n_kv_heads, d_head]
+            
+            # Handle Grouped Query Attention (GQA) mapping
+            n_q_heads = q_rot.shape[2]
+            n_kv_heads = k_rot.shape[2]
+            heads_per_group = n_q_heads // n_kv_heads
+            kv_head_idx = head_idx // heads_per_group  # Correct GQA mapping
+            
+            # Extract Q and K vectors for the specified tokens and head
+            q_vector = q_rot[0, q_index, head_idx, :].clone()  # [d_head]
+            k_vector = k_rot[0, k_index, kv_head_idx, :].clone()  # [d_head]
+            
+            q_vectors.append(q_vector)
+            k_vectors.append(k_vector)
+    
+    # Compute cross dot products
+    for i in range(num_texts):
+        for j in range(num_texts):
+            if q_vectors[i] is not None and k_vectors[j] is not None:
+                dot_product = torch.dot(q_vectors[i], k_vectors[j]).item()
+                dot_product_matrix[i, j] = dot_product
+            else:
+                dot_product_matrix[i, j] = float('nan')
+    
+    # Print the matrix
+    print("\nQ-K Dot Product Matrix:")
+    print("Rows: Query text, Columns: Key text")
+    print(f"{'':>3}", end="")
+    for j in range(num_texts):
+        print(f"{j:>10}", end="")
+    print()
+    
+    for i in range(num_texts):
+        print(f"{i:>3}", end="")
+        for j in range(num_texts):
+            value = dot_product_matrix[i, j].item()
+            if torch.isnan(dot_product_matrix[i, j]):
+                print(f"{'NaN':>10}", end="")
+            else:
+                print(f"{value:>10.6f}", end="")
+        print()
+    
+    print("-" * 80)
+    return dot_product_matrix

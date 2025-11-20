@@ -1118,7 +1118,9 @@ def plot_sentence_similarities(model: HookedTransformer,
 
 def plot_target_similarities(model: HookedTransformer,
                                sentences: List[str], target_sentence: str,
-                               layers: Optional[List[int]] = None) -> None:
+                               layers: Optional[List[int]] = None,
+                               custom_labels: Optional[List[str]] = None,
+                               min_token_pos: Optional[int] = None) -> None:
     """
     Plot similarities of all sentences compared to a target sentence across layers.
     Uses only the model (no SAEs) and final token embeddings.
@@ -1128,6 +1130,8 @@ def plot_target_similarities(model: HookedTransformer,
         sentences: List of sentences to compare
         target_sentence: The target sentence to compare all others against
         layers: List of layer indices to analyze (default: all layers)
+        custom_labels: Optional list of custom labels for the sentences (default: auto-generated)
+        min_token_pos: Optional minimum token position to extract key phrase from sentences
     """
     import matplotlib.pyplot as plt
     
@@ -1162,9 +1166,9 @@ def plot_target_similarities(model: HookedTransformer,
     # Create the plot
     fig, ax = plt.subplots(1, 1, figsize=(12, 6))
     
-    ax.set_title(f'Cosine Similarities to Target: "{target_sentence}"')
+    # No title
     ax.set_xlabel('Layer')
-    ax.set_ylabel('Cosine Similarity')
+    ax.set_ylabel(r'$\cos \theta$')
     ax.grid(True, alpha=0.3)
     
     # Plot similarity for each sentence
@@ -1180,10 +1184,26 @@ def plot_target_similarities(model: HookedTransformer,
                 similarities.append(similarity)
                 layers_plot.append(layer)
         
-        label = f"S{sent_idx+1}: {sentence[:20]}{'...' if len(sentence) > 20 else ''}"
+        # Generate label based on custom_labels or automatic extraction
+        if custom_labels and sent_idx < len(custom_labels):
+            label = custom_labels[sent_idx]
+        elif min_token_pos is not None:
+            # Extract key phrase from min_token_pos to end of sentence
+            tokens = detokenize(model, sentence)
+            if min_token_pos < len(tokens):
+                # Join tokens from min_token_pos onwards, removing leading/trailing spaces
+                key_phrase = ''.join(tokens[min_token_pos:]).strip()
+                label = key_phrase
+            else:
+                label = f"S{sent_idx+1}: {sentence[:20]}{'...' if len(sentence) > 20 else ''}"
+        else:
+            # Default auto-generated label
+            label = f"S{sent_idx+1}: {sentence[:20]}{'...' if len(sentence) > 20 else ''}"
+        
         ax.plot(layers_plot, similarities, marker='o', label=label, linewidth=2)
     
-    ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+    # Put legend in bottom right of plot
+    ax.legend(loc='lower right')
     ax.set_xticks(available_layers[::2])  # Show every other layer to avoid crowding
     
     plt.tight_layout()
