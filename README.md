@@ -1,6 +1,6 @@
 # LLM Circuit Discovery for Idioms
 
-A custom implementation of Automatic Circuit Discovery (ACDC) for transformer language models. This repo contains all code and examples for the paper **Anatomy of an Idiom: Tracing Non-Compositionality in Language Models**.
+A custom implementation of Automatic Circuit Discovery (ACDC) for transformer language models. This repo contains all code and examples for the paper [Anatomy of an Idiom: Tracing Non-Compositionality in Language Models](https://arxiv.org/abs/2511.16467).
 
 
 ## Key Features
@@ -43,6 +43,8 @@ This particular circuit reveals how the model identifies and processes the idiom
 
 ## Quick Start
 
+Also see [idiom_tests.ipynb](idiom_tests.ipynb) for full examples.
+
 ### Installation
 
 1. Clone the repository:
@@ -64,7 +66,7 @@ pip install -r requirements.txt
 
 ### Basic Usage
 
-**Important**: Always use `gemma_utils.load_gemma_model()` for proper model configuration and device settings. Also see 'idiom_tests.ipynb' for full examples.
+**Important**: Always use `gemma_utils.load_gemma_model()` for proper model configuration and device settings.
 
 ```python
 import gemma_utils
@@ -141,4 +143,4 @@ The main class for circuit discovery with the following key methods:
 
 - [ACDC: Automatic Circuit Discovery](https://arxiv.org/abs/2304.14997)
 - [TransformerLens Documentation](https://transformerlensorg.github.io/TransformerLens/)
-- [Gemma 2--2B](https://arxiv.org/abs/2408.00118)
+- [Gemma 2-2B](https://arxiv.org/abs/2408.00118)
