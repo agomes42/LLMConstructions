@@ -144,3 +144,19 @@ The main class for circuit discovery with the following key methods:
 - [ACDC: Automatic Circuit Discovery](https://arxiv.org/abs/2304.14997)
 - [TransformerLens Documentation](https://transformerlensorg.github.io/TransformerLens/)
 - [Gemma 2-2B](https://arxiv.org/abs/2408.00118)
+
+## Citation
+
+If you use this code in your research, please cite my paper:
+
+```bibtex
+@article{gomes2025anatomy,
+  title={Anatomy of an Idiom: Tracing Non-Compositionality in Language Models},
+  author={Andrew Gomes},
+  year={2025},
+  eprint={2511.16467},
+  archivePrefix={arXiv},
+  primaryClass={cs.CL},
+  url={https://arxiv.org/abs/2511.16467}, 
+}
+```
